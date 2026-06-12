@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Job Tracker">
+  <rect width="64" height="64" rx="16" fill="#1e3a8a"/>
+  <path d="M18 23h28v24H18z" fill="#ffffff" opacity="0.95"/>
+  <path d="M24 23v-5c0-3 2-5 5-5h6c3 0 5 2 5 5v5h-4v-5c0-1-1-2-2-2h-4c-1 0-2 1-2 2v5z" fill="#ffffff"/>
+  <path d="M18 31h28v5H18z" fill="#2563eb" opacity="0.9"/>
+  <text x="32" y="48" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="#1e3a8a">JT</text>
+</svg>

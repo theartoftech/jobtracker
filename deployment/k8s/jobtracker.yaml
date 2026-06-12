@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jobtracker
+  labels:
+    app: jobtracker
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: jobtracker
+  template:
+    metadata:
+      labels:
+        app: jobtracker
+    spec:
+      containers:
+        - name: nginx
+          image: jobtracker:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: jobtracker-basic-auth
+              mountPath: /etc/nginx/auth/jobtracker.htpasswd
+              subPath: htpasswd
+              readOnly: true
+            - name: jobtracker-data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8080
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 8080
+            periodSeconds: 30
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 20m
+              memory: 24Mi
+            limits:
+              cpu: 150m
+              memory: 96Mi
+      volumes:
+        - name: jobtracker-basic-auth
+          secret:
+            secretName: jobtracker-basic-auth
+            optional: false
+        - name: jobtracker-data
+          hostPath:
+            path: /var/lib/jobtracker
+            type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jobtracker
+  labels:
+    app: jobtracker
+spec:
+  selector:
+    app: jobtracker
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP

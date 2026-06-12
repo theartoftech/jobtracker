@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Job Tracker</title>
+  <meta name="robots" content="noindex,nofollow">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="jobtracker.css?v=20260612a">
+</head>
+<body>
+  <div class="tracker-app">
+    <header class="tracker-topbar">
+      <a class="tracker-brand" href="/" aria-label="Job tracker home">
+        <span class="tracker-brand-mark">JT</span>
+        <span>Job Tracker</span>
+      </a>
+      <nav class="tracker-menu" aria-label="Job tracker sections">
+        <button class="menu-link is-active" type="button" data-view-button="applications">Applications</button>
+        <button class="menu-link" type="button" data-view-button="tasks">Daily Tasks</button>
+      </nav>
+      <div class="tracker-actions" aria-label="Tracker actions">
+        <span class="connection-status" data-api-status>Checking database...</span>
+        <button class="button secondary" type="button" data-action="export-json">Export JSON</button>
+        <button class="button secondary" type="button" data-action="export-csv">Export CSV</button>
+        <label class="button secondary file-button">
+          Import JSON
+          <input type="file" accept="application/json,.json" data-import-json>
+        </label>
+        <button class="button primary" type="button" data-action="new-job">New Application</button>
+      </div>
+    </header>
+
+    <main class="tracker-main" data-view-panel="applications">
+      <aside class="tracker-sidebar" aria-label="Job search summary">
+        <section class="summary-grid" aria-label="Application metrics">
+          <article><span data-metric="total">0</span><p>Total</p></article>
+          <article><span data-metric="active">0</span><p>Active</p></article>
+          <article><span data-metric="interviews">0</span><p>Interviews</p></article>
+          <article><span data-metric="offers">0</span><p>Offers</p></article>
+        </section>
+
+        <section class="filter-panel" aria-label="Filters">
+          <label><span>Search</span><input type="search" data-search placeholder="Company, role, notes"></label>
+          <label><span>Status</span><select data-status-filter><option value="">All statuses</option></select></label>
+          <label>
+            <span>Sort</span>
+            <select data-sort>
+              <option value="updated-desc">Recently updated</option>
+              <option value="applied-desc">Date applied</option>
+              <option value="company-asc">Company</option>
+              <option value="status-asc">Status</option>
+            </select>
+          </label>
+        </section>
+
+        <section class="company-panel" aria-label="Companies">
+          <h2>Companies</h2>
+          <div class="company-list" data-company-list></div>
+        </section>
+      </aside>
+
+      <section class="application-list-panel" aria-label="Applications">
+        <div class="panel-heading">
+          <div><p class="eyebrow">Pipeline</p><h1>Applications</h1></div>
+          <span class="record-count" data-record-count>0 records</span>
+        </div>
+        <div class="application-list" data-application-list></div>
+      </section>
+
+      <section class="application-detail-panel" aria-label="Selected application">
+        <form class="application-form" data-application-form>
+          <input type="hidden" name="id">
+          <div class="detail-heading">
+            <div><p class="eyebrow">Record</p><h2 data-detail-title>New Application</h2></div>
+            <div class="detail-actions">
+              <button class="button secondary" type="button" data-action="mark-status" data-status="Accepted">Accept</button>
+              <button class="button danger" type="button" data-action="mark-status" data-status="Rejected">Reject</button>
+              <button class="button danger" type="button" data-action="delete-job">Delete</button>
+              <button class="button primary" type="submit">Save</button>
+            </div>
+          </div>
+
+          <div class="form-grid two">
+            <label><span>Company</span><input name="company" required autocomplete="organization"></label>
+            <label><span>Position</span><input name="title" required autocomplete="off"></label>
+            <label><span>Status</span><select name="status"></select></label>
+            <label><span>Date Applied</span><input name="appliedDate" type="date"></label>
+            <label><span>Source</span><input name="source" placeholder="LinkedIn, company site, referral"></label>
+            <label><span>Location</span><input name="location" placeholder="Remote, city, hybrid"></label>
+            <label><span>Salary / Range</span><input name="salary" placeholder="$"></label>
+            <label><span>Job URL</span><input name="jobUrl" type="url" inputmode="url"></label>
+            <label><span>Resume Sent</span><input name="resumeName" placeholder="Resume file or version"></label>
+            <label><span>Resume Link</span><input name="resumeLink" type="url" inputmode="url"></label>
+            <label><span>Cover Letter Sent</span><input name="coverLetterName" placeholder="Cover letter file or version"></label>
+            <label><span>Cover Letter Link</span><input name="coverLetterLink" type="url" inputmode="url"></label>
+          </div>
+
+          <section class="attachment-grid" aria-label="Submitted document copies">
+            <article class="attachment-card">
+              <div>
+                <h3>Resume Copy</h3>
+                <p data-attachment-state="resume">No resume file stored.</p>
+              </div>
+              <div class="attachment-actions">
+                <button class="button secondary" type="button" data-action="choose-attachment" data-attachment-type="resume">Upload Resume</button>
+                <input type="file" data-file-input="resume" accept=".pdf,.doc,.docx,.rtf,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" hidden>
+                <button class="button secondary" type="button" data-action="download-attachment" data-attachment-type="resume">Download</button>
+                <button class="button danger" type="button" data-action="remove-attachment" data-attachment-type="resume">Remove</button>
+              </div>
+            </article>
+            <article class="attachment-card">
+              <div>
+                <h3>Cover Letter Copy</h3>
+                <p data-attachment-state="coverLetter">No cover letter file stored.</p>
+              </div>
+              <div class="attachment-actions">
+                <button class="button secondary" type="button" data-action="choose-attachment" data-attachment-type="coverLetter">Upload Cover Letter</button>
+                <input type="file" data-file-input="coverLetter" accept=".pdf,.doc,.docx,.rtf,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" hidden>
+                <button class="button secondary" type="button" data-action="download-attachment" data-attachment-type="coverLetter">Download</button>
+                <button class="button danger" type="button" data-action="remove-attachment" data-attachment-type="coverLetter">Remove</button>
+              </div>
+            </article>
+          </section>
+
+          <label class="wide-field"><span>Job Description</span><textarea name="jobDescription" rows="8"></textarea></label>
+          <label class="wide-field"><span>Application Notes</span><textarea name="notes" rows="5"></textarea></label>
+        </form>
+
+        <section class="interview-panel" aria-label="Interviews">
+          <div class="panel-heading compact">
+            <div><p class="eyebrow">Rounds</p><h2>Interviews</h2></div>
+            <span class="record-count" data-interview-count>0 records</span>
+          </div>
+          <div class="interview-list" data-interview-list></div>
+          <form class="interview-form" data-interview-form>
+            <input type="hidden" name="id">
+            <div class="form-grid two">
+              <label><span>Round</span><input name="round" placeholder="Recruiter, technical, final"></label>
+              <label><span>Date</span><input name="date" type="date"></label>
+              <label><span>Time</span><input name="time" type="time"></label>
+              <label>
+                <span>Format</span>
+                <select name="format">
+                  <option value="">Select format</option>
+                  <option>Phone</option>
+                  <option>Video</option>
+                  <option>Onsite</option>
+                  <option>Take-home</option>
+                  <option>Other</option>
+                </select>
+              </label>
+              <label><span>Interviewer</span><input name="interviewer"></label>
+              <label>
+                <span>Outcome</span>
+                <select name="outcome">
+                  <option value="">Pending</option>
+                  <option>Scheduled</option>
+                  <option>Completed</option>
+                  <option>Passed</option>
+                  <option>Declined</option>
+                  <option>Cancelled</option>
+                </select>
+              </label>
+              <label><span>Follow-up Date</span><input name="followUpDate" type="date"></label>
+              <label><span>Location / Link</span><input name="location"></label>
+            </div>
+            <label class="wide-field"><span>Interview Notes</span><textarea name="notes" rows="4"></textarea></label>
+            <div class="interview-actions">
+              <button class="button secondary" type="button" data-action="clear-interview">Clear</button>
+              <button class="button primary" type="submit">Save Interview</button>
+            </div>
+          </form>
+        </section>
+      </section>
+    </main>
+
+    <main class="tasks-main" data-view-panel="tasks" hidden>
+      <section class="tasks-header">
+        <div>
+          <p class="eyebrow">Daily Focus</p>
+          <h1>Job Search Tasks</h1>
+        </div>
+        <div class="task-date-controls" aria-label="Task date controls">
+          <button class="button secondary" type="button" data-action="previous-task-day">Previous</button>
+          <label>
+            <span>Date</span>
+            <input type="date" data-task-date>
+          </label>
+          <button class="button secondary" type="button" data-action="today-task-day">Today</button>
+          <button class="button secondary" type="button" data-action="next-task-day">Next</button>
+        </div>
+      </section>
+
+      <section class="task-summary-grid" aria-label="Daily task summary">
+        <article>
+          <span data-task-metric="completed">0 / 0</span>
+          <p>Completed</p>
+        </article>
+        <article>
+          <span data-task-metric="hours">0 hrs</span>
+          <p>Scheduled</p>
+        </article>
+        <article>
+          <span data-task-metric="calendar">Calendar pending</span>
+          <p>Sync</p>
+        </article>
+      </section>
+
+      <section class="task-layout">
+        <section class="daily-task-panel" aria-label="Checklist">
+          <div class="panel-heading">
+            <div><p class="eyebrow">Checklist</p><h2 data-task-day-title>Today</h2></div>
+            <div class="task-panel-actions">
+              <span class="record-count" data-task-count>0 tasks</span>
+              <button class="small-button" type="button" data-action="add-task">Add Task</button>
+            </div>
+          </div>
+          <div class="task-list" data-task-list></div>
+        </section>
+
+        <aside class="calendar-panel" aria-label="Calendar busy blocks">
+          <div class="panel-heading compact">
+            <div><p class="eyebrow">Calendar</p><h2>Busy Blocks</h2></div>
+          </div>
+          <p class="calendar-status" data-calendar-status>Calendar sync has not run yet.</p>
+          <div class="busy-list" data-calendar-busy-list></div>
+        </aside>
+      </section>
+    </main>
+
+    <div class="toast" data-toast role="status" aria-live="polite"></div>
+  </div>
+
+  <script src="jobtracker.js?v=20260612a"></script>
+</body>
+</html>
