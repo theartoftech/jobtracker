@@ -127,6 +127,20 @@ class AnalyticsReadTests(unittest.TestCase):
         self.assertEqual(python["trend"]["percent_change"], 100.0)
         self.assertEqual(python["training"]["status"], "learning")
 
+        self.assertEqual(
+            result["totals"],
+            {
+                "active_gaps": 4,
+                "affected_jobs": 4,
+                "high_fit_opportunities": 3,
+                "top_training_priority": {
+                    "skill_key": "python",
+                    "display_name": "Python",
+                    "score": 57.15,
+                },
+            },
+        )
+
     def test_false_positives_are_excluded_from_active_but_resolutions_are_queryable(self) -> None:
         active = get_skill_gap_summary(self.db, {"days": "30", "as_of": "2026-07-20"})
         self.assertNotIn("go", {item["skill_key"] for item in active["skills"]})
@@ -149,6 +163,12 @@ class AnalyticsReadTests(unittest.TestCase):
         self.assertEqual(decision["skills"][0]["unique_affected_requisitions"], 1)
         training = get_skill_gap_summary(self.db, {**common, "training_status": "learning"})
         self.assertEqual([item["skill_key"] for item in training["skills"]], ["python"])
+
+        missing_training = get_skill_gap_summary(
+            self.db, {**common, "training_status": "planned"}
+        )
+        self.assertEqual(missing_training["totals"]["affected_jobs"], 0)
+        self.assertIsNone(missing_training["totals"]["top_training_priority"])
 
     def test_training_priority_is_explainable_and_excludes_unrelated_rejections(self) -> None:
         result = get_skill_gap_summary(self.db, {"days": "30", "as_of": "2026-07-20"})

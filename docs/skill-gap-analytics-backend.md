@@ -1,6 +1,6 @@
 # Skill-gap analytics backend
 
-This is the backend-only, read-only first analytics release. It adds persistence, a jobagent-owned import path, and dashboard read APIs. It does not add an analytics UI or a gap-resolution editor. The jobagent remains the source of truth for gap classifications and resolutions. In particular, `evidence_developed` means training evidence exists; it is not professional experience and never clears an active gap automatically.
+This analytics release adds persistence, a jobagent-owned import path, read APIs, and a read-only Skill Gaps dashboard. It does not add a gap-resolution or training-status editor. The jobagent remains the source of truth for gap classifications, resolutions, and training state. In particular, `evidence_developed` means training evidence exists; it is not professional experience and never clears an active gap automatically.
 
 ## Safety invariants
 
@@ -161,7 +161,20 @@ Summary/detail filters are `days=30|60|90`, `decision`, `classification=required
 
 Counts deduplicate stable postings/requisitions within a period, so repeated daily sightings do not inflate totals. Required and preferred counts are independently deduplicated. Active totals exclude `posting_false_positive`. High-fit roles are unique postings with fit score at least 80 and decision `strong_apply` or `apply`. Trend is the unique-posting count in the selected window minus the count in the immediately preceding equal-length window; percent is `null` when the preceding count is zero.
 
+The skill-gap summary also returns dashboard-level `totals`:
+
+- `active_gaps`: unique active posting/skill pairs after filters, excluding posting false positives.
+- `affected_jobs`: unique stable postings after filters, so a posting with multiple gaps is counted once.
+- `high_fit_opportunities`: unique filtered postings at 80+ fit with a `strong_apply` or `apply` decision.
+- `top_training_priority`: the highest-ranked visible skill key, display name, and score, or `null` for an empty result.
+
 Skill detail returns affected posting links, classifications, fit/decision/blocker context, optional tracker application IDs, application status, interview outcomes, and aggregated outcome counts.
+
+## Skill Gaps dashboard
+
+The `Skill Gaps` navigation tab calls only the analytics read endpoints. Its window, qualification, decision, and active/resolved controls map directly to the documented query parameters. It provides KPI cards, frequency ranking, current-versus-previous trend visualization, a sortable skills table, and affected-posting detail with optional linked application outcomes. Selecting `Open application` navigates to an already-linked tracker record; it does not transfer or mutate application status.
+
+Loading, empty, and API-error states are explicit. The dashboard is responsive and keyboard-operable. There is intentionally no tracker-side editor for resolutions or training status.
 
 ## Training-priority calculation (v1)
 

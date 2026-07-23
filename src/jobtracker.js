@@ -34,6 +34,7 @@
     "Archived"
   ];
   const ACTIVE_STATUSES = new Set(["Interested", "Applied", "Recruiter Screen", "Interviewing", "Final Round", "Offer"]);
+  const TRACKER_VIEWS = new Set(["applications", "tasks", "skill-gaps"]);
 
   const state = {
     jobs: [],
@@ -212,17 +213,35 @@
         );
       });
     }
+
+    window.addEventListener("jobtracker:open-application", (event) => {
+      const applicationId = clean(event.detail && event.detail.applicationId);
+      if (!applicationId || !state.jobs.some((job) => job.id === applicationId)) {
+        showToast("The linked application is no longer available.");
+        return;
+      }
+      state.selectedJobId = applicationId;
+      state.currentView = "applications";
+      clearInterviewForm();
+      render();
+    });
   }
 
   function setCurrentView(view) {
-    state.currentView = view === "tasks" ? "tasks" : "applications";
+    state.currentView = TRACKER_VIEWS.has(view) ? view : "applications";
     elements.viewButtons.forEach((button) => {
       button.classList.toggle("is-active", button.getAttribute("data-view-button") === state.currentView);
     });
     elements.viewPanels.forEach((panel) => {
       panel.hidden = panel.getAttribute("data-view-panel") !== state.currentView;
     });
+    document.querySelectorAll("[data-application-action]").forEach((action) => {
+      action.hidden = state.currentView === "skill-gaps";
+    });
     if (state.currentView === "tasks") renderTasks();
+    if (state.currentView === "skill-gaps" && window.SkillGapDashboard) {
+      window.SkillGapDashboard.activate();
+    }
   }
 
   function createNewJob() {

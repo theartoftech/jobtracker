@@ -4,7 +4,7 @@ Standalone self-hosted job application tracker.
 
 The app is a private Nginx site with server-side basic authentication and a small local Python API backed by SQLite. Application data, daily task notes/checks, and attachment metadata are stored in SQLite. Uploaded resume and cover-letter copies are stored under the persistent uploads directory and can be downloaded from the application record.
 
-The first skill-gap analytics release is backend/read-only. See [Skill-gap analytics backend](docs/skill-gap-analytics-backend.md) for the additive schema, versioned jobagent import contract, read APIs, scoring formula, and safe backup/rollback procedure.
+The Skill Gaps tab is a read-only analytics dashboard backed by jobagent workflow imports. See [Skill-gap analytics backend](docs/skill-gap-analytics-backend.md) for the additive schema, versioned import contract, dashboard/read APIs, scoring formula, and safe backup/rollback procedure. Gap classifications, resolutions, and training status remain jobagent-owned; the tracker does not edit them.
 
 ## Run Locally
 

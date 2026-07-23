@@ -1154,6 +1154,32 @@ def get_skill_gap_summary(
             str(item["skill_key"]),
         )
     )
+    visible_skills = {str(item["skill_key"]) for item in metrics}
+    visible_rows = [row for row in current if str(row["skill_key"]) in visible_skills]
+    visible_postings = _unique_posting_rows(visible_rows)
+    active_gaps = len(
+        {
+            (str(row["posting_id"]), str(row["skill_key"]))
+            for row in visible_rows
+            if row["active"] and row["resolution_state"] != "posting_false_positive"
+        }
+    )
+    high_fit_opportunities = len(
+        {
+            posting_id
+            for posting_id, row in visible_postings.items()
+            if float(row["appearance_fit_score"]) >= 80
+            and row["appearance_workflow_decision"] in {"strong_apply", "apply"}
+        }
+    )
+    top_priority = None
+    if metrics:
+        top_skill = metrics[0]
+        top_priority = {
+            "skill_key": top_skill["skill_key"],
+            "display_name": top_skill["display_name"],
+            "score": top_skill["training_priority"]["score"],
+        }
     return {
         "period": {
             "days": filters["days"],
@@ -1166,6 +1192,12 @@ def get_skill_gap_summary(
             key: raw_filters.get(key)
             for key in ("decision", "classification", "state", "company", "title", "training_status")
             if raw_filters.get(key) is not None
+        },
+        "totals": {
+            "active_gaps": active_gaps,
+            "affected_jobs": len(visible_postings),
+            "high_fit_opportunities": high_fit_opportunities,
+            "top_training_priority": top_priority,
         },
         "skill_count": len(metrics),
         "skills": metrics,

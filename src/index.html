@@ -6,7 +6,7 @@
   <title>Job Tracker</title>
   <meta name="robots" content="noindex,nofollow">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="jobtracker.css?v=20260612a">
+  <link rel="stylesheet" href="jobtracker.css?v=20260723a">
 </head>
 <body>
   <div class="tracker-app">
@@ -18,16 +18,17 @@
       <nav class="tracker-menu" aria-label="Job tracker sections">
         <button class="menu-link is-active" type="button" data-view-button="applications">Applications</button>
         <button class="menu-link" type="button" data-view-button="tasks">Daily Tasks</button>
+        <button class="menu-link" type="button" data-view-button="skill-gaps">Skill Gaps</button>
       </nav>
       <div class="tracker-actions" aria-label="Tracker actions">
         <span class="connection-status" data-api-status>Checking database...</span>
-        <button class="button secondary" type="button" data-action="export-json">Export JSON</button>
-        <button class="button secondary" type="button" data-action="export-csv">Export CSV</button>
-        <label class="button secondary file-button">
+        <button class="button secondary" type="button" data-action="export-json" data-application-action>Export JSON</button>
+        <button class="button secondary" type="button" data-action="export-csv" data-application-action>Export CSV</button>
+        <label class="button secondary file-button" data-application-action>
           Import JSON
           <input type="file" accept="application/json,.json" data-import-json>
         </label>
-        <button class="button primary" type="button" data-action="new-job">New Application</button>
+        <button class="button primary" type="button" data-action="new-job" data-application-action>New Application</button>
       </div>
     </header>
 
@@ -229,9 +230,139 @@
       </section>
     </main>
 
+    <main class="analytics-main" data-view-panel="skill-gaps" hidden>
+      <section class="analytics-header" aria-labelledby="skill-gaps-title">
+        <div>
+          <div class="analytics-title-row">
+            <div>
+              <p class="eyebrow">Jobagent intelligence</p>
+              <h1 id="skill-gaps-title">Skill Gaps</h1>
+            </div>
+            <span class="read-only-badge">Read-only analytics</span>
+          </div>
+          <p class="analytics-intro">See which qualifications recur across worthwhile opportunities and where focused training may have the most impact.</p>
+        </div>
+        <form class="analytics-filters" data-analytics-filters aria-label="Skill gap filters">
+          <label>
+            <span>Window</span>
+            <select name="days">
+              <option value="30">30 days</option>
+              <option value="60">60 days</option>
+              <option value="90">90 days</option>
+            </select>
+          </label>
+          <label>
+            <span>Qualification</span>
+            <select name="classification">
+              <option value="">Required + preferred</option>
+              <option value="required">Required</option>
+              <option value="preferred">Preferred</option>
+            </select>
+          </label>
+          <label>
+            <span>Decision</span>
+            <select name="decision">
+              <option value="">All decisions</option>
+              <option value="strong_apply">Strong Apply</option>
+              <option value="apply">Apply</option>
+              <option value="moderate_stretch">Moderate Stretch</option>
+              <option value="do_not_apply">Do Not Apply</option>
+            </select>
+          </label>
+          <label>
+            <span>Gap state</span>
+            <select name="state">
+              <option value="active">Active</option>
+              <option value="resolved">Resolved</option>
+              <option value="all">Active + resolved</option>
+            </select>
+          </label>
+        </form>
+      </section>
+
+      <section class="analytics-feedback" data-analytics-feedback role="status" aria-live="polite">
+        <span class="analytics-loader" aria-hidden="true"></span>
+        <div><strong>Loading skill gaps</strong><p>Reading the latest jobagent review data.</p></div>
+      </section>
+
+      <div class="analytics-content" data-analytics-content hidden>
+        <section class="analytics-kpis" aria-label="Skill gap metrics">
+          <article class="analytics-kpi">
+            <span data-analytics-kpi="active-gaps">0</span>
+            <div><h2>Active gaps</h2><p>Posting-to-skill gaps in this window</p></div>
+          </article>
+          <article class="analytics-kpi">
+            <span data-analytics-kpi="affected-jobs">0</span>
+            <div><h2>Affected jobs</h2><p>Unique postings, never daily repeats</p></div>
+          </article>
+          <article class="analytics-kpi">
+            <span data-analytics-kpi="high-fit">0</span>
+            <div><h2>High-fit opportunities</h2><p>Strong Apply or Apply at 80+ fit</p></div>
+          </article>
+          <article class="analytics-kpi priority-kpi">
+            <span data-analytics-kpi="top-priority-score">0</span>
+            <div><h2>Top training priority</h2><p data-analytics-kpi="top-priority-label">None</p></div>
+          </article>
+        </section>
+
+        <section class="analytics-chart-grid">
+          <article class="analytics-panel ranked-panel" aria-labelledby="ranked-gaps-title">
+            <div class="panel-heading compact">
+              <div><p class="eyebrow">Frequency</p><h2 id="ranked-gaps-title">Ranked gaps</h2></div>
+              <span class="record-count">Unique jobs</span>
+            </div>
+            <div class="ranked-gap-list" data-ranked-gaps></div>
+          </article>
+
+          <article class="analytics-panel trend-panel" aria-labelledby="trend-title">
+            <div class="panel-heading compact">
+              <div><p class="eyebrow">Direction</p><h2 id="trend-title">Gap trend</h2></div>
+              <span class="record-count" data-trend-period>Current vs previous period</span>
+            </div>
+            <div class="trend-legend" aria-hidden="true"><span class="previous">Previous</span><span class="current">Current</span></div>
+            <canvas class="trend-canvas" data-trend-canvas width="760" height="300" aria-label="Current and previous unique job counts for ranked skill gaps"></canvas>
+            <div class="trend-summary-list" data-trend-summary aria-label="Trend summary"></div>
+          </article>
+        </section>
+
+        <section class="analytics-panel skills-table-panel" aria-labelledby="skills-table-title">
+          <div class="panel-heading compact">
+            <div><p class="eyebrow">All tracked gaps</p><h2 id="skills-table-title">Skills</h2></div>
+            <span class="record-count" data-skill-count>0 skills</span>
+          </div>
+          <div class="skills-table-scroll">
+            <table class="skills-table">
+              <thead>
+                <tr>
+                  <th scope="col"><button type="button" data-skill-sort="skill">Skill <span aria-hidden="true"></span></button></th>
+                  <th scope="col"><button type="button" data-skill-sort="frequency">Frequency <span aria-hidden="true"></span></button></th>
+                  <th scope="col"><button type="button" data-skill-sort="priority">Priority score <span aria-hidden="true"></span></button></th>
+                  <th scope="col"><button type="button" data-skill-sort="blockers">Blockers <span aria-hidden="true"></span></button></th>
+                  <th scope="col"><button type="button" data-skill-sort="training">Training status <span aria-hidden="true"></span></button></th>
+                  <th scope="col">Trend</th>
+                </tr>
+              </thead>
+              <tbody data-skills-table></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="analytics-panel skill-detail" data-skill-detail aria-labelledby="skill-detail-title" hidden>
+          <div class="detail-heading">
+            <div><p class="eyebrow">Affected postings</p><h2 id="skill-detail-title" data-skill-detail-title>Skill detail</h2></div>
+            <button class="small-button" type="button" data-close-skill-detail>Close detail</button>
+          </div>
+          <div class="skill-detail-summary" data-skill-detail-summary></div>
+          <div class="affected-postings" data-affected-postings></div>
+        </section>
+      </div>
+    </main>
+
     <div class="toast" data-toast role="status" aria-live="polite"></div>
   </div>
 
-  <script src="jobtracker.js?v=20260612a"></script>
+  <script src="skill-gaps.js?v=20260723a"></script>
+  <script src="skill-gaps-ui.js?v=20260723a"></script>
+  <script src="jobtracker.js?v=20260723a"></script>
 </body>
 </html>
