@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jobtracker.local/contracts/workflow-run-import-v1.schema.json",
+  "title": "Job Tracker workflow review run import v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_date", "source_artifact_name", "source_sha256", "postings"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "run_date": {"type": "string", "format": "date"},
+    "source_artifact_name": {"type": "string", "minLength": 1, "maxLength": 255},
+    "source_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
+    "workflow_profile_version": {"type": ["string", "null"], "maxLength": 160},
+    "postings": {"type": "array", "maxItems": 500, "items": {"$ref": "#/$defs/posting"}},
+    "training_statuses": {"type": "array", "maxItems": 500, "items": {"$ref": "#/$defs/training"}}
+  },
+  "$defs": {
+    "skillKey": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._+\\-]{0,79}$"},
+    "url": {"type": "string", "format": "uri", "maxLength": 2048},
+    "decision": {"enum": ["strong_apply", "apply", "moderate_stretch", "do_not_apply"]},
+    "gap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["skill_key", "display_name", "raw_posting_label", "classification", "hard_blocker", "resolution_state", "active"],
+      "properties": {
+        "skill_key": {"$ref": "#/$defs/skillKey"},
+        "display_name": {"type": "string", "minLength": 1, "maxLength": 160},
+        "raw_posting_label": {"type": "string", "minLength": 1, "maxLength": 500},
+        "classification": {"enum": ["required", "preferred"]},
+        "hard_blocker": {"type": "boolean"},
+        "resolution_state": {"enum": ["unanswered", "professional_evidence", "limited_exposure", "do_not_claim", "posting_false_positive"]},
+        "resolution_evidence": {"type": ["string", "null"], "maxLength": 1000},
+        "active": {"type": "boolean"}
+      },
+      "allOf": [{"if": {"properties": {"resolution_state": {"const": "posting_false_positive"}}, "required": ["resolution_state"]}, "then": {"properties": {"active": {"const": false}}}}]
+    },
+    "posting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["posting_key", "canonical_url", "company", "title", "work_model", "source_decision", "fit_score", "strict_workflow_decision", "already_applied", "gaps"],
+      "properties": {
+        "posting_key": {"type": "string", "minLength": 1, "maxLength": 200},
+        "requisition_id": {"type": ["string", "null"], "maxLength": 128},
+        "canonical_url": {"$ref": "#/$defs/url"},
+        "company": {"type": "string", "minLength": 1, "maxLength": 200},
+        "title": {"type": "string", "minLength": 1, "maxLength": 240},
+        "location": {"type": ["string", "null"], "maxLength": 300},
+        "work_model": {"enum": ["remote", "hybrid", "onsite", "unspecified"]},
+        "source_decision": {"$ref": "#/$defs/decision"},
+        "fit_score": {"type": "number", "minimum": 0, "maximum": 100},
+        "strict_workflow_decision": {"$ref": "#/$defs/decision"},
+        "primary_blocker": {"enum": ["none", "skill_gap", "location", "clearance", "compensation", "employment_authorization", "unrelated"]},
+        "already_applied": {"type": "boolean"},
+        "gaps": {"type": "array", "maxItems": 5000, "items": {"$ref": "#/$defs/gap"}}
+      }
+    },
+    "training": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["skill_key", "status"],
+      "properties": {
+        "skill_key": {"$ref": "#/$defs/skillKey"},
+        "status": {"enum": ["not_evaluated", "not_pursuing", "planned", "learning", "practicing", "evidence_developed"]},
+        "target_date": {"type": ["string", "null"], "format": "date"},
+        "notes": {"type": ["string", "null"], "maxLength": 4000},
+        "learning_resources": {"type": "array", "maxItems": 50, "items": {"$ref": "#/$defs/url"}}
+      }
+    }
+  }
+}

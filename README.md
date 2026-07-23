@@ -4,10 +4,12 @@ Standalone self-hosted job application tracker.
 
 The app is a private Nginx site with server-side basic authentication and a small local Python API backed by SQLite. Application data, daily task notes/checks, and attachment metadata are stored in SQLite. Uploaded resume and cover-letter copies are stored under the persistent uploads directory and can be downloaded from the application record.
 
+The first skill-gap analytics release is backend/read-only. See [Skill-gap analytics backend](docs/skill-gap-analytics-backend.md) for the additive schema, versioned jobagent import contract, read APIs, scoring formula, and safe backup/rollback procedure.
+
 ## Run Locally
 
 ```bash
-JOBTRACKER_DATA_DIR=/tmp/jobtracker-data python3 server/app.py
+JOBTRACKER_DATA_DIR=/tmp/jobtracker-data python3 -m server.app
 python3 -m http.server 8765 --directory src
 ```
 
@@ -63,6 +65,6 @@ Back up the tracker from the server:
 
 ```bash
 mkdir -p ~/jobtracker-backups
-cp /var/lib/jobtracker/jobtracker.db ~/jobtracker-backups/jobtracker-$(date +%Y%m%d%H%M%S).db
+python3 -m server.backup /var/lib/jobtracker/jobtracker.db ~/jobtracker-backups/jobtracker-$(date +%Y%m%d%H%M%S).db
 tar -czf ~/jobtracker-backups/jobtracker-uploads-$(date +%Y%m%d%H%M%S).tgz -C /var/lib/jobtracker uploads
 ```

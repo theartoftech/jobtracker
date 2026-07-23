@@ -21,6 +21,13 @@ spec:
           imagePullPolicy: Never
           ports:
             - containerPort: 8080
+          env:
+            - name: JOBTRACKER_ANALYTICS_IMPORT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: jobtracker-analytics-import
+                  key: token
+                  optional: true
           volumeMounts:
             - name: jobtracker-basic-auth
               mountPath: /etc/nginx/auth/jobtracker.htpasswd

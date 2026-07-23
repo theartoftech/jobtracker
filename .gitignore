@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+.coverage
+.pytest_cache/
+coverage.xml
+htmlcov/
+playground.log

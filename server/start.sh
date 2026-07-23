@@ -3,7 +3,8 @@ set -eu
 
 mkdir -p /data/uploads /etc/nginx/auth /run/nginx
 
-python3 /app/server/app.py &
+cd /app
+python3 -m server.app &
 api_pid="$!"
 
 trap 'kill "$api_pid" 2>/dev/null || true' INT TERM EXIT

@@ -12,7 +12,21 @@ from email.parser import BytesParser
 from email.policy import default as email_policy
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from typing import Any, Dict, Optional, Tuple
+from urllib.parse import parse_qs, unquote, urlparse
+
+from .analytics import (
+    MAX_ANALYTICS_BODY_BYTES,
+    AuthenticationError,
+    ImportValidationError,
+    authenticate_import_token,
+    get_skill_gap_detail,
+    get_skill_gap_summary,
+    get_workflow_run,
+    import_workflow_run,
+    list_workflow_runs,
+)
+from .migrations import apply_migrations
 
 
 DATA_DIR = Path(os.environ.get("JOBTRACKER_DATA_DIR", "/data"))
@@ -24,11 +38,11 @@ MAX_CHUNK_BYTES = 1024 * 1024
 ATTACHMENT_TYPES = {"resume", "coverLetter"}
 
 
-def now_iso():
+def now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
-def ensure_storage():
+def ensure_storage() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     CHUNK_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -67,9 +81,10 @@ def ensure_storage():
             """
         )
         ensure_task_entry_columns(db)
+        apply_migrations(db)
 
 
-def ensure_task_entry_columns(db):
+def ensure_task_entry_columns(db: sqlite3.Connection) -> None:
     existing_columns = {row["name"] for row in db.execute("PRAGMA table_info(task_entries)").fetchall()}
     migrations = {
         "title": "ALTER TABLE task_entries ADD COLUMN title TEXT NOT NULL DEFAULT ''",
@@ -85,30 +100,31 @@ def ensure_task_entry_columns(db):
             db.execute(statement)
 
 
-def connect_db():
+def connect_db() -> sqlite3.Connection:
     connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
     return connection
 
 
-def clean_string(value):
+def clean_string(value: Any) -> str:
     return str(value or "").strip()
 
 
-def safe_filename(filename):
+def safe_filename(filename: Any) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", clean_string(filename)).strip(".-")
     return cleaned or "attachment"
 
 
-def attachment_id(job_id, attachment_type):
+def attachment_id(job_id: str, attachment_type: str) -> str:
     return f"{job_id}:{attachment_type}"
 
 
-def safe_token(value):
+def safe_token(value: Any) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "-", clean_string(value)).strip(".-")
 
 
-def metadata_fields(attachment_type, row):
+def metadata_fields(attachment_type: str, row: Optional[sqlite3.Row]) -> Dict[str, Any]:
     prefix = "coverLetter" if attachment_type == "coverLetter" else "resume"
     return {
         f"{prefix}FileName": row["filename"] if row else "",
@@ -118,7 +134,7 @@ def metadata_fields(attachment_type, row):
     }
 
 
-def attach_metadata(db, job):
+def attach_metadata(db: sqlite3.Connection, job: Dict[str, Any]) -> Dict[str, Any]:
     job_id = clean_string(job.get("id"))
     if not job_id:
         return job
@@ -131,7 +147,7 @@ def attach_metadata(db, job):
     return job
 
 
-def read_state():
+def read_state() -> Dict[str, Any]:
     with connect_db() as db:
         jobs = []
         for row in db.execute("SELECT data FROM jobs ORDER BY updated_at DESC").fetchall():
@@ -171,7 +187,7 @@ def read_state():
     }
 
 
-def write_state(payload):
+def write_state(payload: Dict[str, Any]) -> None:
     jobs = payload.get("jobs") if isinstance(payload.get("jobs"), list) else []
     task_days = payload.get("taskDays") if isinstance(payload.get("taskDays"), dict) else {}
     selected_task_date = clean_string(payload.get("selectedTaskDate"))
@@ -252,13 +268,13 @@ def write_state(payload):
         db.commit()
 
 
-def remove_job_files(db, job_id):
+def remove_job_files(db: sqlite3.Connection, job_id: str) -> None:
     rows = db.execute("SELECT stored_name FROM attachments WHERE job_id = ?", (job_id,)).fetchall()
     for row in rows:
         remove_upload(row["stored_name"])
 
 
-def remove_upload(stored_name):
+def remove_upload(stored_name: str) -> None:
     if not stored_name:
         return
     path = UPLOAD_DIR / stored_name
@@ -269,7 +285,7 @@ def remove_upload(stored_name):
         pass
 
 
-def parse_attachment_path(path):
+def parse_attachment_path(path: str) -> Tuple[Optional[str], Optional[str]]:
     match = re.fullmatch(r"/api/jobs/([^/]+)/attachments/([^/]+)", path)
     if not match:
         return None, None
@@ -280,7 +296,9 @@ def parse_attachment_path(path):
     return job_id, attachment_type
 
 
-def parse_attachment_chunk_path(path):
+def parse_attachment_chunk_path(
+    path: str,
+) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[int]]:
     match = re.fullmatch(r"/api/jobs/([^/]+)/attachments/([^/]+)/chunks/([^/]+)/([0-9]+)", path)
     if not match:
         return None, None, None, None
@@ -294,7 +312,16 @@ def parse_attachment_chunk_path(path):
     return job_id, attachment_type, upload_id, int(match.group(4))
 
 
-def save_attachment_record(db, job_id, attachment_type, original_name, stored_name, mime_type, size, timestamp):
+def save_attachment_record(
+    db: sqlite3.Connection,
+    job_id: str,
+    attachment_type: str,
+    original_name: str,
+    stored_name: str,
+    mime_type: str,
+    size: int,
+    timestamp: str,
+) -> sqlite3.Row:
     old_row = db.execute(
         "SELECT stored_name FROM attachments WHERE job_id = ? AND attachment_type = ?",
         (job_id, attachment_type),
@@ -332,13 +359,29 @@ def save_attachment_record(db, job_id, attachment_type, original_name, stored_na
 class JobTrackerHandler(BaseHTTPRequestHandler):
     server_version = "JobTrackerAPI/1.0"
 
-    def do_GET(self):
-        path = urlparse(self.path).path
+    def do_GET(self) -> None:
+        parsed = urlparse(self.path)
+        path = parsed.path
         if path == "/api/health":
             self.send_json({"ok": True})
             return
         if path == "/api/state":
             self.send_json(read_state())
+            return
+        if path == "/api/analytics/skill-gaps":
+            self.send_skill_gap_summary(parsed.query)
+            return
+        skill_match = re.fullmatch(r"/api/analytics/skill-gaps/([^/]+)", path)
+        if skill_match:
+            self.send_skill_gap_detail(unquote(skill_match.group(1)), parsed.query)
+            return
+        if path == "/api/analytics/workflow-runs":
+            with connect_db() as db:
+                self.send_json(list_workflow_runs(db))
+            return
+        run_match = re.fullmatch(r"/api/analytics/workflow-runs/([^/]+)", path)
+        if run_match:
+            self.send_workflow_run(unquote(run_match.group(1)))
             return
         job_id, attachment_type = parse_attachment_path(path)
         if job_id and attachment_type:
@@ -346,7 +389,7 @@ class JobTrackerHandler(BaseHTTPRequestHandler):
             return
         self.send_error(404, "Not found")
 
-    def do_PUT(self):
+    def do_PUT(self) -> None:
         path = urlparse(self.path).path
         job_id, attachment_type, upload_id, chunk_index = parse_attachment_chunk_path(path)
         if job_id and attachment_type:
@@ -361,15 +404,100 @@ class JobTrackerHandler(BaseHTTPRequestHandler):
         write_state(payload)
         self.send_json({"ok": True, "state": read_state()})
 
-    def do_POST(self):
+    def do_POST(self) -> None:
         path = urlparse(self.path).path
+        if path == "/api/analytics/workflow-runs":
+            self.receive_workflow_run()
+            return
         job_id, attachment_type = parse_attachment_path(path)
         if not job_id or not attachment_type:
             self.send_error(404, "Not found")
             return
         self.receive_attachment(job_id, attachment_type)
 
-    def do_DELETE(self):
+    def analytics_filters(self, query: str) -> Dict[str, str]:
+        parsed = parse_qs(query, keep_blank_values=True)
+        duplicates = [key for key, values in parsed.items() if len(values) != 1]
+        if duplicates:
+            raise ValueError(f"Analytics filters may appear only once: {sorted(duplicates)}")
+        return {key: values[0] for key, values in parsed.items()}
+
+    def send_skill_gap_summary(self, query: str) -> None:
+        try:
+            filters = self.analytics_filters(query)
+            with connect_db() as db:
+                payload = get_skill_gap_summary(db, filters)
+        except ValueError as exc:
+            self.send_api_error(400, "invalid_filter", str(exc))
+            return
+        self.send_json(payload)
+
+    def send_skill_gap_detail(self, skill_key: str, query: str) -> None:
+        try:
+            filters = self.analytics_filters(query)
+            with connect_db() as db:
+                payload = get_skill_gap_detail(db, skill_key, filters)
+        except ValueError as exc:
+            self.send_api_error(400, "invalid_filter", str(exc))
+            return
+        except KeyError:
+            self.send_api_error(404, "not_found", f"Skill gap not found: {skill_key}")
+            return
+        self.send_json(payload)
+
+    def send_workflow_run(self, run_date: str) -> None:
+        try:
+            with connect_db() as db:
+                payload = get_workflow_run(db, run_date)
+        except ValueError as exc:
+            self.send_api_error(400, "invalid_run_date", str(exc))
+            return
+        except KeyError:
+            self.send_api_error(404, "not_found", f"Workflow run not found: {run_date}")
+            return
+        self.send_json(payload)
+
+    def receive_workflow_run(self) -> None:
+        try:
+            authenticate_import_token(
+                self.headers.get("Authorization", ""),
+                os.environ.get("JOBTRACKER_ANALYTICS_IMPORT_TOKEN", ""),
+            )
+        except AuthenticationError as exc:
+            self.send_api_error(
+                401,
+                "unauthorized",
+                str(exc),
+                {"WWW-Authenticate": 'Bearer realm="jobtracker-analytics-import"'},
+            )
+            return
+        content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+        if content_type != "application/json":
+            self.send_api_error(415, "unsupported_media_type", "Expected application/json")
+            return
+        payload = self.read_json_body(MAX_ANALYTICS_BODY_BYTES, analytics=True)
+        if payload is None:
+            return
+        try:
+            with connect_db() as db:
+                summary = import_workflow_run(db, payload, now_iso())
+        except ImportValidationError as exc:
+            self.send_json(
+                {
+                    "error": {"code": "invalid_import", "message": "Import validation failed", "details": exc.errors},
+                    "import_summary": {
+                        "inserted": 0,
+                        "updated": 0,
+                        "unchanged": 0,
+                        "rejected": exc.rejected_count,
+                    },
+                },
+                400,
+            )
+            return
+        self.send_json({"ok": True, "import_summary": summary})
+
+    def do_DELETE(self) -> None:
         path = urlparse(self.path).path
         job_id, attachment_type = parse_attachment_path(path)
         if not job_id or not attachment_type:
@@ -388,7 +516,7 @@ class JobTrackerHandler(BaseHTTPRequestHandler):
             )
         self.send_json({"ok": True, "metadata": metadata_fields(attachment_type, None)})
 
-    def receive_attachment(self, job_id, attachment_type):
+    def receive_attachment(self, job_id: str, attachment_type: str) -> None:
         content_type = self.headers.get("Content-Type", "")
         if "multipart/form-data" not in content_type:
             self.send_error(400, "Expected multipart/form-data")
@@ -421,7 +549,9 @@ class JobTrackerHandler(BaseHTTPRequestHandler):
 
         self.send_json({"ok": True, "metadata": metadata_fields(attachment_type, row)})
 
-    def receive_attachment_chunk(self, job_id, attachment_type, upload_id, chunk_index):
+    def receive_attachment_chunk(
+        self, job_id: str, attachment_type: str, upload_id: str, chunk_index: int
+    ) -> None:
         payload = self.read_json_body()
         if payload is None:
             return
@@ -487,7 +617,7 @@ class JobTrackerHandler(BaseHTTPRequestHandler):
 
         self.send_json({"ok": True, "metadata": metadata_fields(attachment_type, row)})
 
-    def send_attachment(self, job_id, attachment_type):
+    def send_attachment(self, job_id: str, attachment_type: str) -> None:
         with connect_db() as db:
             row = db.execute(
                 "SELECT * FROM attachments WHERE job_id = ? AND attachment_type = ?",
@@ -508,37 +638,72 @@ class JobTrackerHandler(BaseHTTPRequestHandler):
         with path.open("rb") as source:
             shutil.copyfileobj(source, self.wfile)
 
-    def read_json_body(self):
-        body = self.read_body()
+    def read_json_body(self, maximum: int = MAX_BODY_BYTES, analytics: bool = False) -> Optional[Any]:
+        body = self.read_body(maximum, analytics)
         if body is None:
             return None
         try:
             return json.loads(body.decode("utf-8"))
-        except json.JSONDecodeError:
-            self.send_error(400, "Invalid JSON")
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            if analytics:
+                self.send_api_error(400, "invalid_json", "Request body is not valid UTF-8 JSON")
+            else:
+                self.send_error(400, "Invalid JSON")
             return None
 
-    def read_body(self):
-        length = int(self.headers.get("Content-Length", "0") or "0")
-        if length > MAX_BODY_BYTES:
-            self.send_error(413, "Request body too large")
+    def read_body(self, maximum: int = MAX_BODY_BYTES, analytics: bool = False) -> Optional[bytes]:
+        try:
+            length = int(self.headers.get("Content-Length", "0") or "0")
+        except ValueError:
+            if analytics:
+                self.send_api_error(400, "invalid_content_length", "Content-Length must be an integer")
+            else:
+                self.send_error(400, "Invalid Content-Length")
+            return None
+        if length < 0:
+            if analytics:
+                self.send_api_error(400, "invalid_content_length", "Content-Length must not be negative")
+            else:
+                self.send_error(400, "Invalid Content-Length")
+            return None
+        if length > maximum:
+            if analytics:
+                self.send_api_error(413, "payload_too_large", f"Analytics import limit is {maximum} bytes")
+            else:
+                self.send_error(413, "Request body too large")
             return None
         return self.rfile.read(length)
 
-    def send_json(self, payload, status=200):
+    def send_api_error(
+        self,
+        status: int,
+        code: str,
+        message: str,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> None:
+        self.send_json({"error": {"code": code, "message": message}}, status, headers)
+
+    def send_json(
+        self,
+        payload: Any,
+        status: int = 200,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> None:
         content = json.dumps(payload).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(content)))
         self.send_header("Cache-Control", "no-store")
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(content)
 
-    def log_message(self, format_string, *args):
+    def log_message(self, format_string: str, *args: Any) -> None:
         print(f"{self.address_string()} - {format_string % args}", flush=True)
 
 
-def main():
+def main() -> None:
     ensure_storage()
     port = int(os.environ.get("JOBTRACKER_API_PORT", "8090"))
     server = ThreadingHTTPServer(("127.0.0.1", port), JobTrackerHandler)
