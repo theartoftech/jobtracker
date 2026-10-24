@@ -1,0 +1,9 @@
+*
+!Dockerfile
+!nginx.conf
+!src/
+!src/**
+!server/
+!server/**
+**/__pycache__/
+**/*.pyc

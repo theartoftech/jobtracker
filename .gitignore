@@ -5,3 +5,16 @@ __pycache__/
 coverage.xml
 htmlcov/
 playground.log
+.local/
+.env
+.env.*
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.htpasswd
+data/
+uploads/
+backups/
+target/

@@ -17,6 +17,7 @@ DEPLOY_IMAGE_REF=""
 SSH_HOST=""
 SSH_USER=""
 REMOTE_APP_DIR=""
+HOST_DATA_DIR=""
 FORWARDED_ARGS=()
 
 usage() {
@@ -32,6 +33,7 @@ Options:
   --host <hostname>             SSH to the remote Ubuntu/k3s server and deploy there.
   --ssh-user <user>             SSH username for --host. Default: current user.
   --remote-dir <path>           Remote application directory. Default: /home/<ssh-user>/jobtracker.
+  --data-dir <path>             Absolute node data directory. Default: existing deployment or /var/lib/jobtracker.
   --namespace <name>            Kubernetes namespace. Default: jobtracker.
   --jobtracker-port <port>      Host-facing job tracker port. Default: 8086.
   --context <name>              Kubernetes context to target.
@@ -99,6 +101,12 @@ while [[ $# -gt 0 ]]; do
             FORWARDED_ARGS+=("$1" "$KUBE_NAMESPACE")
             shift
             ;;
+        --data-dir)
+            require_option_value "$1" "${2:-}"
+            HOST_DATA_DIR="$2"
+            FORWARDED_ARGS+=("$1" "$HOST_DATA_DIR")
+            shift
+            ;;
         --jobtracker-port)
             require_option_value "$1" "${2:-}"
             HOST_JOBTRACKER_PORT="${2:-}"
@@ -131,6 +139,16 @@ while [[ $# -gt 0 ]]; do
     esac
     shift
 done
+
+validate_data_dir() {
+    if [[ ! "$1" =~ ^/[A-Za-z0-9_./-]+$ ]]; then
+        echo "--data-dir must be an absolute path using letters, digits, dots, underscores, hyphens, and slashes." >&2
+        exit 1
+    fi
+}
+if [[ -n "$HOST_DATA_DIR" ]]; then
+    validate_data_dir "$HOST_DATA_DIR"
+fi
 
 if [[ -n "$SSH_HOST" && -z "$SSH_USER" ]]; then
     SSH_USER="${USER:-$(id -un)}"
@@ -184,7 +202,9 @@ sync_project_to_remote() {
         --exclude='*/target' \
         --exclude='node_modules' \
         --exclude='*/node_modules' \
-        -czf - . | ssh "$remote_target" "rm -rf $(printf '%q' "$REMOTE_APP_DIR") && mkdir -p $(printf '%q' "$REMOTE_APP_DIR") && tar --warning=no-unknown-keyword -xzf - -C $(printf '%q' "$REMOTE_APP_DIR")"
+        --exclude='__pycache__' \
+        --exclude='*.pyc' \
+        -czf - Dockerfile .dockerignore nginx.conf src server deployment | ssh "$remote_target" "rm -rf $(printf '%q' "$REMOTE_APP_DIR") && mkdir -p $(printf '%q' "$REMOTE_APP_DIR") && tar --warning=no-unknown-keyword -xzf - -C $(printf '%q' "$REMOTE_APP_DIR")"
 }
 
 run_via_remote_ssh() {
@@ -328,11 +348,17 @@ build_and_publish_image() {
 
 apply_jobtracker_resources() {
     echo "Applying job tracker resources in namespace $KUBE_NAMESPACE..."
+    if [[ -z "$HOST_DATA_DIR" ]]; then
+        HOST_DATA_DIR="$(kubectl_ns get deployment jobtracker --ignore-not-found -o 'jsonpath={.spec.template.spec.volumes[?(@.name=="jobtracker-data")].hostPath.path}')"
+        HOST_DATA_DIR="${HOST_DATA_DIR:-/var/lib/jobtracker}"
+    fi
+    validate_data_dir "$HOST_DATA_DIR"
     kubectl_ns delete pod -l app=jobtracker --ignore-not-found=true
     kubectl_ns delete service jobtracker --ignore-not-found=true
     sed \
         -e "s|image: jobtracker:latest|image: $DEPLOY_IMAGE_REF|" \
         -e "s|imagePullPolicy: Never|imagePullPolicy: IfNotPresent|" \
+        -e "s|path: /var/lib/jobtracker|path: $HOST_DATA_DIR|" \
         deployment/k8s/jobtracker.yaml | kubectl_ns apply -f -
     kubectl_ns rollout status deployment/jobtracker --timeout=120s
     kubectl_ns patch service jobtracker --type json -p "[{\"op\":\"replace\",\"path\":\"/spec/type\",\"value\":\"LoadBalancer\"},{\"op\":\"replace\",\"path\":\"/spec/ports\",\"value\":[{\"name\":\"http\",\"port\":${HOST_JOBTRACKER_PORT},\"protocol\":\"TCP\",\"targetPort\":8080}]}]"

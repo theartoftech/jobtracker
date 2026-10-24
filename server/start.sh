@@ -1,9 +1,10 @@
 #!/usr/bin/env sh
 set -eu
 
-mkdir -p /data/uploads /etc/nginx/auth /run/nginx
-
 cd /app
+python3 -m server.runtime_config
+nginx -t
+mkdir -p /data/uploads /etc/nginx/auth /run/nginx
 python3 -m server.app &
 api_pid="$!"
 

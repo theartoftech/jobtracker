@@ -22,6 +22,12 @@ spec:
           ports:
             - containerPort: 8080
           env:
+            - name: JOBTRACKER_CONFIG_JSON
+              valueFrom:
+                secretKeyRef:
+                  name: jobtracker-runtime
+                  key: config.json
+                  optional: true
             - name: JOBTRACKER_ANALYTICS_IMPORT_TOKEN
               valueFrom:
                 secretKeyRef:

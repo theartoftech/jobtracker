@@ -1,6 +1,6 @@
 FROM python:3.13-alpine
 
-RUN apk add --no-cache nginx
+RUN apk add --no-cache nginx tzdata ca-certificates
 
 COPY nginx.conf /etc/nginx/http.d/default.conf
 RUN mkdir -p /etc/nginx/auth \

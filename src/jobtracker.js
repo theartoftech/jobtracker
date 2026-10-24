@@ -1,4 +1,5 @@
 (function () {
+  // Retain storage identifiers so existing browser backups and attachments remain available.
   const STORAGE_KEY = "jh.jobtracker.v1";
   const ATTACHMENT_DB_NAME = "jh.jobtracker.attachments";
   const ATTACHMENT_DB_VERSION = 1;
@@ -19,8 +20,10 @@
     "text/rtf": [".rtf"],
     "text/plain": [".txt"]
   };
-  const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const DEFAULT_TASKS = [];
+  /** @type {{title: string, timeZone: string, calendarOpenUrl: string, defaultTasks: Array<{id: string, title: string, start: string, end: string, detail?: string}>}} */
+  const runtimeConfig = window.JOBTRACKER_CONFIG;
+  if (!runtimeConfig) throw new Error("Runtime configuration failed to load. Reload the application.");
+  const DEFAULT_TASKS = runtimeConfig.defaultTasks;
   const STATUS_OPTIONS = [
     "Interested",
     "Applied",
@@ -43,12 +46,13 @@
     statusFilter: "",
     sort: "updated-desc",
     currentView: "applications",
-    selectedTaskDate: formatDateInput(new Date()),
+    selectedTaskDate: getDateKeyInZone(new Date()),
     taskDays: {},
     apiAvailable: false,
     saveTimer: 0,
     saveInFlight: Promise.resolve(),
     calendarEvents: [],
+    calendarConfigured: true,
     calendarLoaded: false,
     calendarError: ""
   };
@@ -82,6 +86,14 @@
   initialize();
 
   async function initialize() {
+    document.title = runtimeConfig.title;
+    const appTitle = document.querySelector("[data-app-title]");
+    if (appTitle) appTitle.textContent = runtimeConfig.title;
+    const calendarOpen = document.querySelector("[data-calendar-open]");
+    if (calendarOpen && runtimeConfig.calendarOpenUrl) {
+      calendarOpen.href = runtimeConfig.calendarOpenUrl;
+      calendarOpen.hidden = false;
+    }
     populateStatusOptions();
     await loadState();
     wireEvents();
@@ -117,7 +129,7 @@
       if (action === "add-task") addTask();
       if (action === "delete-task") deleteTask(actionElement.getAttribute("data-task-id"));
       if (action === "previous-task-day") moveTaskDate(-1);
-      if (action === "today-task-day") setTaskDate(formatDateInput(new Date()));
+      if (action === "today-task-day") setTaskDate(getDateKeyInZone(new Date()));
       if (action === "next-task-day") moveTaskDate(1);
     });
 
@@ -251,7 +263,7 @@
       company: "",
       title: "",
       status: "Applied",
-      appliedDate: formatDateInput(new Date()),
+      appliedDate: getDateKeyInZone(new Date()),
       source: "",
       location: "",
       salary: "",
@@ -550,7 +562,7 @@
 
   function renderTasks() {
     if (!elements.taskList) return;
-    const dateKey = state.selectedTaskDate || formatDateInput(new Date());
+    const dateKey = state.selectedTaskDate || getDateKeyInZone(new Date());
     const entries = getTaskDay(dateKey);
     const taskDefinitions = getTaskDefinitionsForDate(dateKey);
     const schedule = getScheduledTasks(dateKey);
@@ -562,7 +574,7 @@
     elements.taskCount.textContent = `${taskDefinitions.length} ${taskDefinitions.length === 1 ? "task" : "tasks"}`;
     setTaskMetric("completed", `${completed} / ${taskDefinitions.length}`);
     setTaskMetric("hours", `${formatHours(totalHours)} hrs`);
-    setTaskMetric("calendar", state.calendarLoaded ? "Synced" : state.calendarError ? "Offline" : "Loading");
+    setTaskMetric("calendar", !state.calendarConfigured ? "Not configured" : state.calendarLoaded ? "Synced" : state.calendarError ? "Offline" : "Loading");
 
     elements.taskList.innerHTML = schedule.map((item) => {
       const entry = entries[item.id] || {};
@@ -611,13 +623,18 @@
       `;
     }).join("");
 
+    if (!schedule.length) {
+      elements.taskList.innerHTML = '<div class="empty-state">No tasks yet. Add a task to plan your day.</div>';
+    }
     renderCalendarBusyBlocks(dateKey);
   }
 
   function renderCalendarBusyBlocks(dateKey) {
     if (!elements.calendarStatus || !elements.calendarBusyList) return;
     const busyBlocks = getBusyBlocksForDate(dateKey);
-    elements.calendarStatus.textContent = state.calendarError
+    elements.calendarStatus.textContent = !state.calendarConfigured
+      ? "Calendar not configured."
+      : state.calendarError
       ? `Calendar could not sync: ${state.calendarError}`
       : state.calendarLoaded
         ? `Using ${busyBlocks.length} busy ${busyBlocks.length === 1 ? "block" : "blocks"} for ${formatLongDate(dateKey)}.`
@@ -629,7 +646,7 @@
             <span>${block.allDay ? "All day" : "Busy"}</span>
           </article>
         `).join("")
-      : `<div class="empty-state">No calendar conflicts for this day.</div>`;
+      : `<div class="empty-state">${state.calendarLoaded ? "No calendar conflicts for this day." : "Calendar busy blocks are unavailable."}</div>`;
   }
 
   function getScheduledTasks(dateKey) {
@@ -670,7 +687,7 @@
       .map((task, index) => mergeTaskDefinition(task, day[task.id], index))
       .filter((task) => !task.deleted);
     const customTasks = Object.entries(day)
-      .filter(([taskId, entry]) => !defaultTaskIds.has(taskId) && entry && typeof entry === "object" && entry.custom && !entry.deleted)
+      .filter(([taskId, entry]) => !defaultTaskIds.has(taskId) && entry && typeof entry === "object" && !entry.deleted)
       .map(([taskId, entry], index) => mergeTaskDefinition({
         id: taskId,
         title: "New task",
@@ -730,7 +747,7 @@
   }
 
   function addTask() {
-    const dateKey = state.selectedTaskDate || formatDateInput(new Date());
+    const dateKey = state.selectedTaskDate || getDateKeyInZone(new Date());
     const day = getTaskDay(dateKey);
     const existingTasks = getTaskDefinitionsForDate(dateKey);
     const lastTask = existingTasks[existingTasks.length - 1];
@@ -754,7 +771,7 @@
 
   function deleteTask(taskId) {
     if (!taskId) return;
-    const dateKey = state.selectedTaskDate || formatDateInput(new Date());
+    const dateKey = state.selectedTaskDate || getDateKeyInZone(new Date());
     const day = getTaskDay(dateKey);
     const entry = day[taskId] || {};
     if (entry.custom) {
@@ -769,7 +786,7 @@
 
   function updateTaskEntry(taskId, updates, shouldRender) {
     if (!taskId) return;
-    const dateKey = state.selectedTaskDate || formatDateInput(new Date());
+    const dateKey = state.selectedTaskDate || getDateKeyInZone(new Date());
     const day = getTaskDay(dateKey);
     day[taskId] = { ...(day[taskId] || {}), ...updates };
     persistTaskState();
@@ -778,7 +795,7 @@
 
   function updateTaskDefinition(taskId, updates, shouldRender) {
     if (!taskId) return;
-    const dateKey = state.selectedTaskDate || formatDateInput(new Date());
+    const dateKey = state.selectedTaskDate || getDateKeyInZone(new Date());
     const day = getTaskDay(dateKey);
     const current = day[taskId] || {};
     const normalizedUpdates = { ...updates };
@@ -801,10 +818,10 @@
   function loadTaskState() {
     try {
       const parsed = JSON.parse(window.localStorage.getItem(TASK_STORAGE_KEY) || "{}");
-      state.selectedTaskDate = clean(parsed.selectedTaskDate) || formatDateInput(new Date());
+      state.selectedTaskDate = clean(parsed.selectedTaskDate) || getDateKeyInZone(new Date());
       state.taskDays = parsed.taskDays && typeof parsed.taskDays === "object" ? parsed.taskDays : {};
     } catch (error) {
-      state.selectedTaskDate = formatDateInput(new Date());
+      state.selectedTaskDate = getDateKeyInZone(new Date());
       state.taskDays = {};
     }
   }
@@ -818,9 +835,18 @@
     queueRemotePersist(false);
   }
 
+  /** @returns {Promise<void>} */
   async function refreshCalendarEvents() {
     try {
       const response = await fetch(CALENDAR_FEED_URL, { cache: "no-store" });
+      state.calendarConfigured = response.status !== 204;
+      if (!state.calendarConfigured) {
+        state.calendarEvents = [];
+        state.calendarLoaded = false;
+        state.calendarError = "";
+        renderTasks();
+        return;
+      }
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const content = await response.text();
       state.calendarEvents = parseCalendarEvents(content);
@@ -828,6 +854,7 @@
       state.calendarError = "";
     } catch (error) {
       state.calendarEvents = [];
+      state.calendarConfigured = true;
       state.calendarLoaded = false;
       state.calendarError = "feed unavailable";
     }
@@ -918,7 +945,7 @@
   }
 
   function exportJson() {
-    downloadFile(`jobtracker-${formatDateInput(new Date())}.json`, JSON.stringify({
+    downloadFile(`jobtracker-${getDateKeyInZone(new Date())}.json`, JSON.stringify({
       version: 2,
       exportedAt: new Date().toISOString(),
       selectedJobId: state.selectedJobId,
@@ -933,7 +960,7 @@
     const header = ["Company", "Position", "Status", "Date Applied", "Source", "Location", "Salary", "Job URL", "Resume Sent", "Resume File", "Resume Link", "Cover Letter Sent", "Cover Letter File", "Cover Letter Link", "Interview Count", "Next Interview", "Notes"];
     const rows = state.jobs.map((job) => [job.company, job.title, job.status, job.appliedDate, job.source, job.location, job.salary, job.jobUrl, job.resumeName, job.resumeFileName, job.resumeLink, job.coverLetterName, job.coverLetterFileName, job.coverLetterLink, Array.isArray(job.interviews) ? job.interviews.length : 0, getNextInterviewDate(job), job.notes]);
     const csv = [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
-    downloadFile(`jobtracker-${formatDateInput(new Date())}.csv`, csv, "text/csv");
+    downloadFile(`jobtracker-${getDateKeyInZone(new Date())}.csv`, csv, "text/csv");
     showToast("CSV export ready.");
   }
 
@@ -1060,7 +1087,7 @@
       setApiAvailable(true);
       state.jobs = Array.isArray(parsed.jobs) ? parsed.jobs.map(normalizeJob) : [];
       state.selectedJobId = clean(parsed.selectedJobId) || localState.selectedJobId || "";
-      state.selectedTaskDate = clean(parsed.selectedTaskDate) || localTaskState.selectedTaskDate || formatDateInput(new Date());
+      state.selectedTaskDate = clean(parsed.selectedTaskDate) || localTaskState.selectedTaskDate || getDateKeyInZone(new Date());
       state.taskDays = parsed.taskDays && typeof parsed.taskDays === "object" ? parsed.taskDays : {};
 
       if (!state.jobs.length && localState.jobs.length) {
@@ -1082,7 +1109,7 @@
       setApiAvailable(false);
       state.jobs = localState.jobs;
       state.selectedJobId = localState.selectedJobId;
-      state.selectedTaskDate = localTaskState.selectedTaskDate || formatDateInput(new Date());
+      state.selectedTaskDate = localTaskState.selectedTaskDate || getDateKeyInZone(new Date());
       state.taskDays = localTaskState.taskDays;
       showToast("Database unavailable. Using browser backup.");
     }
@@ -1520,7 +1547,7 @@
   }
 
   function getNextInterviewDate(job) {
-    const today = formatDateInput(new Date());
+    const today = getDateKeyInZone(new Date());
     const interviews = Array.isArray(job.interviews) ? job.interviews : [];
     return interviews.map((interview) => interview.date).filter((date) => date && date >= today).sort()[0] || "";
   }
@@ -1585,8 +1612,14 @@
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
   }
 
+  /** @param {Date} date @returns {number} */
   function dateToMinutes(date) {
-    return date.getHours() * 60 + date.getMinutes();
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: runtimeConfig.timeZone || undefined,
+      hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+    }).formatToParts(date);
+    return Number(parts.find(part => part.type === "hour").value) * 60
+      + Number(parts.find(part => part.type === "minute").value);
   }
 
   function formatMinutes(value) {
@@ -1600,9 +1633,10 @@
     return startA < endB && endA > startB;
   }
 
+  /** @param {Date} date @returns {string} */
   function getDateKeyInZone(date) {
     const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: TIME_ZONE,
+      timeZone: runtimeConfig.timeZone || undefined,
       year: "numeric",
       month: "2-digit",
       day: "2-digit"

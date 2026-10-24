@@ -13,7 +13,7 @@
     <header class="tracker-topbar">
       <a class="tracker-brand" href="/" aria-label="Job tracker home">
         <span class="tracker-brand-mark">JT</span>
-        <span>Job Tracker</span>
+        <span data-app-title>Job Tracker</span>
       </a>
       <nav class="tracker-menu" aria-label="Job tracker sections">
         <button class="menu-link is-active" type="button" data-view-button="applications">Applications</button>
@@ -223,6 +223,7 @@
         <aside class="calendar-panel" aria-label="Calendar busy blocks">
           <div class="panel-heading compact">
             <div><p class="eyebrow">Calendar</p><h2>Busy Blocks</h2></div>
+            <a class="small-button" data-calendar-open hidden target="_blank" rel="noopener">Open</a>
           </div>
           <p class="calendar-status" data-calendar-status>Calendar sync has not run yet.</p>
           <div class="busy-list" data-calendar-busy-list></div>
@@ -361,6 +362,7 @@
     <div class="toast" data-toast role="status" aria-live="polite"></div>
   </div>
 
+  <script src="runtime-config.js"></script>
   <script src="skill-gaps.js?v=20260723a"></script>
   <script src="skill-gaps-ui.js?v=20260723a"></script>
   <script src="jobtracker.js?v=20260723a"></script>
